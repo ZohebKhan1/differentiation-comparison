@@ -1,85 +1,87 @@
-# maturation score workflow
+# Maturation Score Workflow
 
-repo for calculating a pca-based maturation score. basically projecting samples onto a trajectory defined by a control timecourse.
+Repo for calculating a PCA-based Maturation Score. Basically projecting samples onto a trajectory defined by a control timecourse.
 
-## overview
+## Overview
 
-1.  **find dynamic genes**: run lrt on control group (d21) to find stuff changing over time.
-2.  **define trajectory**: pca on those genes. vector is start (day 6) to end (day 17).
-3.  **score**: project everyone onto that vector. 0 is early, 1 is late.
+1.  **Find Dynamic Genes**: Run LRT on control group (D21) to find stuff changing over time.
+2.  **Define Trajectory**: PCA on those genes. Vector is Start (Day 6) to End (Day 17).
+3.  **Score**: Project everyone onto that vector. 0 is Early, 1 is Late.
 
-## steps
+## Steps
 
-check `tutorial_workflow.Rmd` for the code.
+Check `tutorial_workflow.Rmd` for the code.
 
-### 1. load & prep
+### 1. Load & Prep
 
-loading metadata and counts. making sure factors are right (day 6 -> 10 -> 17).
+Loading metadata and counts. Making sure factors are right (Day 6 -> 10 -> 17).
 
 ```r
-# load libs
+# Load libs
 library(DESeq2)
 library(ggplot2)
 library(dplyr)
 
-# load data
+# Load data
 metadata <- readRDS("dat/metadata/WC24_metadata_clean.rds")
 raw_counts <- readRDS("dat/counts/raw/WC24_filt_raw_counts.rds")
 vst_counts <- readRDS("dat/counts/vst/WC24_vst_counts.rds")
 ```
 
-### 2. lrt
+### 2. LRT
 
-finding top 1000 genes changing in d21 controls.
+Finding top 1000 genes changing in D21 controls.
 
 ```r
-# subset d21
+# Subset D21
 dds <- DESeqDataSetFromMatrix(countData = raw_ctrl, colData = meta_ctrl, design = ~ timepoint)
 dds <- DESeq(dds, test = "LRT", reduced = ~ 1)
 
-# top 1000
+# Top 1000
 res <- results(dds)
 top_genes <- rownames(res[order(res$padj), ])[1:1000]
 ```
 
-### 3. pca & vector
+### 3. PCA & Vector
 
-pca on those genes. defining the vector from day 6 centroid to day 17 centroid.
+PCA on those genes. Defining the vector from Day 6 centroid to Day 17 centroid.
 
 ```r
-# centroids
+# Centroids
 origin <- centroids %>% filter(timepoint == 6)
 endpoint <- centroids %>% filter(timepoint == 17)
 
-# vector
+# Vector
 ref_vec <- endpoint_vec - origin_vec
 ```
 
-### 4. plots
+### 4. Plots
 
-#### trajectory
+#### Trajectory
 
-samples in pc space. arrow is the maturation path.
+Samples in PC space. Arrow is the maturation path.
 
-![pca trajectory](plots/pca_trajectory_plot.png)
+<img src="plots/pca_trajectory_plot.png" width="500">
 
-#### scores
+#### Scores
 
-normalized scores (0-1).
+Normalized scores (0-1).
 
-**barplot:**
-![barplot](plots/maturation_scores_barplot.png)
+**Barplot:**
+<br>
+<img src="plots/maturation_scores_barplot.png" width="400">
 
-**trajectory:**
-![lineplot](plots/maturation_scores_lineplot.png)
+**Trajectory:**
+<br>
+<img src="plots/maturation_scores_lineplot.png" width="400">
 
-## usage
+## Usage
 
-1.  clone this.
-2.  data goes in `dat/`.
-3.  run `tutorial_workflow.Rmd`.
+1.  Clone this.
+2.  Data goes in `dat/`.
+3.  Run `tutorial_workflow.Rmd`.
 
-## deps
+## Deps
 - R
 - DESeq2
 - ggplot2

@@ -1,6 +1,6 @@
 ---
-title: "maturation score workflow"
-author: "bioinformatics team"
+title: "Maturation Score Workflow"
+author: "Bioinformatics Team"
 date: "`r Sys.Date()`"
 output: 
   html_document:
@@ -14,13 +14,13 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
-# intro
+# Introduction
 
-calculating a pca-based maturation score to quantify differentiation progress. basically projecting samples onto a vector defined by the d21 control timecourse (day 6 -> day 17).
+Calculating a PCA-based Maturation Score to quantify differentiation progress. Basically projecting samples onto a vector defined by the D21 control timecourse (Day 6 -> Day 17).
 
-# 1. libs
+# 1. Libraries
 
-loading what we need. deseq2 for the stats, tidyverse for everything else.
+Loading what we need. DESeq2 for the stats, Tidyverse for everything else.
 
 ```{r libs}
 library(DESeq2)
@@ -32,33 +32,33 @@ library(gridExtra)
 library(scatterplot3d)
 ```
 
-# 2. load data
+# 2. Load Data
 
-grabbing metadata and counts. using raw counts for lrt and vst for pca/plotting.
+Grabbing metadata and counts. Using raw counts for LRT and VST for PCA/plotting.
 
 ```{r load_data}
-# paths
+# Paths
 meta_file <- "dat/metadata/WC24_metadata_clean.rds"
 raw_file <- "dat/counts/raw/WC24_filt_raw_counts.rds"
 vst_file <- "dat/counts/vst/WC24_vst_counts.rds"
 
-# load em up
+# Load em up
 metadata <- readRDS(meta_file)
 raw_counts <- readRDS(raw_file)
 vst_counts <- readRDS(vst_file)
 
-# quick check
-print("meta dims:")
+# Quick check
+print("Meta dims:")
 dim(metadata)
 head(metadata)
 ```
 
-# 3. preprocessing
+# 3. Preprocessing
 
-making sure samples match up and factors are set right.
+Making sure samples match up and factors are set right.
 
 ```{r preprocess}
-# align samples if needed
+# Align samples if needed
 if (!identical(rownames(metadata), colnames(raw_counts))) {
   common <- intersect(rownames(metadata), colnames(raw_counts))
   metadata <- metadata[common, ]
@@ -68,73 +68,73 @@ if (!identical(rownames(metadata), colnames(raw_counts))) {
 
 stopifnot(all(rownames(metadata) == colnames(raw_counts)))
 
-# set cols
+# Set cols
 time_col <- "timepoint" 
 group_col <- "genotype" 
 
-# fix factor levels. d21 control is 6, 10, 17
+# Fix factor levels. D21 control is 6, 10, 17
 metadata[[time_col]] <- factor(metadata[[time_col]], levels = c(6, 10, 17))
 metadata[[group_col]] <- factor(metadata[[group_col]])
 
-# control group for defining the vector
+# Control group for defining the vector
 control_group <- "D21"
 ```
 
-# 4. feature selection (lrt)
+# 4. Feature Selection (LRT)
 
-finding dynamic genes in the control group using lrt.
+Finding dynamic genes in the control group using LRT.
 
 ```{r lrt}
-# subset d21 controls
+# Subset D21 controls
 ctrl_idx <- rownames(metadata)[metadata[[group_col]] == control_group]
 meta_ctrl <- metadata[ctrl_idx, ]
 raw_ctrl <- raw_counts[, ctrl_idx]
 
-# deseq2 hates ordered factors in design, so force it to be unordered here
+# DESeq2 hates ordered factors in design, so force it to be unordered here
 meta_ctrl[[time_col]] <- factor(meta_ctrl[[time_col]], ordered = FALSE)
 
-# build dds
+# Build dds
 dds <- DESeqDataSetFromMatrix(countData = raw_ctrl,
                               colData = meta_ctrl,
                               design = as.formula(paste0("~ ", time_col)))
 
-# run lrt (full vs reduced)
+# Run LRT (full vs reduced)
 dds <- DESeq(dds, test = "LRT", reduced = ~ 1)
 res <- results(dds)
 
-# grab top 1000 significant genes
+# Grab top 1000 significant genes
 res_ordered <- res[order(res$padj), ]
 sig_genes <- rownames(res_ordered)[which(res_ordered$padj < 0.05)]
 n_top <- 1000
 
 if (length(sig_genes) < n_top) {
   top_genes <- sig_genes
-  message(paste("found", length(sig_genes), "sig genes. using all."))
+  message(paste("Found", length(sig_genes), "sig genes. Using all."))
 } else {
   top_genes <- rownames(res_ordered)[1:n_top]
-  message(paste("taking top", n_top, "genes"))
+  message(paste("Taking top", n_top, "genes"))
 }
 ```
 
-# 5. pca & vector def
+# 5. PCA & Vector Def
 
-pca on the top genes, then defining the start (day 6) and end (day 17) centroids.
+PCA on the top genes, then defining the Start (Day 6) and End (Day 17) centroids.
 
 ```{r pca_calc}
-# subset vst
+# Subset VST
 vst_top <- vst_counts[top_genes, ]
 
-# run pca
+# Run PCA
 pca_res <- prcomp(t(vst_top), center = TRUE, scale. = TRUE)
 
-# get coords (top 3 pcs)
+# Get coords (top 3 PCs)
 pca_coords <- as.data.frame(pca_res$x[, 1:3])
 pca_coords$Sample <- rownames(pca_coords)
 
-# merge meta
+# Merge meta
 pca_coords <- cbind(pca_coords, metadata[rownames(pca_coords), ])
 
-# calc centroids for control group
+# Calc centroids for control group
 centroids <- pca_coords %>%
   filter(!!sym(group_col) == control_group) %>%
   group_by(!!sym(time_col)) %>%
@@ -146,38 +146,38 @@ centroids <- pca_coords %>%
   ) %>%
   ungroup()
 
-# define start/end
+# Define start/end
 t_start <- levels(metadata[[time_col]])[1] # 6
 t_end <- levels(metadata[[time_col]])[length(levels(metadata[[time_col]]))] # 17
 
 origin <- centroids %>% filter(!!sym(time_col) == t_start)
 endpoint <- centroids %>% filter(!!sym(time_col) == t_end)
 
-# maturation vector
+# Maturation vector
 origin_vec <- c(origin$PC1_mean, origin$PC2_mean, origin$PC3_mean)
 endpoint_vec <- c(endpoint$PC1_mean, endpoint$PC2_mean, endpoint$PC3_mean)
 ref_vec <- endpoint_vec - origin_vec
 ref_mag <- sqrt(sum(ref_vec^2))
 
-message(paste("vector defined: day", t_start, "-> day", t_end))
+message(paste("Vector defined: Day", t_start, "-> Day", t_end))
 ```
 
-# 6. calc scores
+# 6. Calc Scores
 
-projecting everyone onto the vector. 0 = start, 1 = end.
+Projecting everyone onto the vector. 0 = Start, 1 = End.
 
 ```{r score_calc}
-# projection function
+# Projection function
 calculate_score <- function(pc1, pc2, pc3, origin, ref, mag) {
-  # vec from origin
+  # Vec from origin
   sample_vec_pc1 <- pc1 - origin[1]
   sample_vec_pc2 <- pc2 - origin[2]
   sample_vec_pc3 <- pc3 - origin[3]
   
-  # dot product
+  # Dot product
   dot_prod <- sample_vec_pc1 * ref[1] + sample_vec_pc2 * ref[2] + sample_vec_pc3 * ref[3]
   
-  # normalize
+  # Normalize
   score <- dot_prod / (mag^2)
   return(score)
 }
@@ -190,43 +190,43 @@ pca_coords$maturation_score <- mapply(calculate_score,
                                                       ref = ref_vec, 
                                                       mag = ref_mag))
 
-# check means
+# Check means
 pca_coords %>%
   group_by(!!sym(group_col), !!sym(time_col)) %>%
   summarise(mean_score = mean(maturation_score), .groups = "drop")
 ```
 
-# 7. plots
+# 7. Plots
 
-## a. 3d pca
+## A. 3D PCA
 
-showing the trajectory.
+Showing the trajectory.
 
-```{r plot_pca, fig.width=10, fig.height=7}
-# var explained
+```{r plot_pca, fig.width=6, fig.height=5}
+# Var explained
 var_exp <- summary(pca_res)$importance[2, 1:3] * 100
 pc1_lab <- paste0("PC1: ", round(var_exp[1], 1), "%")
 pc2_lab <- paste0("PC2: ", round(var_exp[2], 1), "%")
 pc3_lab <- paste0("PC3: ", round(var_exp[3], 1), "%")
 
-# filter for control only
+# Filter for control only
 pca_coords_ctrl <- pca_coords %>% filter(!!sym(group_col) == control_group)
 
-# save plot
-png("plots/pca_trajectory_plot.png", width = 8, height = 6, units = "in", res = 300)
+# Save plot (Smaller dimensions)
+png("plots/pca_trajectory_plot.png", width = 6, height = 5, units = "in", res = 300)
 
-# colors (no black for day 6)
+# Colors (no black for Day 6)
 cols <- c("#1B9E77", "#D95F02", "#7570B3")
 cols_mapped <- cols[as.numeric(pca_coords_ctrl[[time_col]])]
 
-# scatterplot3d with manual margin adjustments
+# Scatterplot3d with manual margin adjustments
 s3d <- scatterplot3d(x = pca_coords_ctrl$PC1, 
                      y = pca_coords_ctrl$PC2, 
                      z = pca_coords_ctrl$PC3,
                      color = cols_mapped,
                      pch = 19, 
                      type = "h", 
-                     main = paste("3d pca (", control_group, ")"),
+                     main = paste("3D PCA (", control_group, ")"),
                      xlab = pc1_lab,
                      ylab = pc2_lab,
                      zlab = pc3_lab,
@@ -235,7 +235,7 @@ s3d <- scatterplot3d(x = pca_coords_ctrl$PC1,
                      y.margin.add = 0.2,
                      mar = c(5, 5, 4, 7))
 
-# arrow
+# Arrow
 s3d_coords <- s3d$xyz.convert(x = c(origin_vec[1], endpoint_vec[1]), 
                               y = c(origin_vec[2], endpoint_vec[2]), 
                               z = c(origin_vec[3], endpoint_vec[3]))
@@ -244,23 +244,23 @@ arrows(x0 = s3d_coords$x[1], y0 = s3d_coords$y[1],
        x1 = s3d_coords$x[2], y1 = s3d_coords$y[2], 
        lwd = 3, col = "black", length = 0.1)
 
-text(s3d_coords$x[1], s3d_coords$y[1], labels = "start", pos = 1, cex = 1.2)
-text(s3d_coords$x[2], s3d_coords$y[2], labels = "end", pos = 3, cex = 1.2)
+text(s3d_coords$x[1], s3d_coords$y[1], labels = "Start", pos = 1, cex = 1.2)
+text(s3d_coords$x[2], s3d_coords$y[2], labels = "End", pos = 3, cex = 1.2)
 
-# legend outside
+# Legend outside
 par(xpd = TRUE)
 legend("topright", inset = c(-0.15, 0), legend = levels(pca_coords_ctrl[[time_col]]),
-       col = cols, pch = 19, title = "timepoint", bty = "n", cex = 1.0)
+       col = cols, pch = 19, title = "Timepoint", bty = "n", cex = 1.0)
 
 dev.off()
 ```
 
-## b. scores
+## B. Scores
 
-barplot and lineplot.
+Barplot and Lineplot.
 
-```{r plot_scores, fig.width=10, fig.height=5}
-# summary stats
+```{r plot_scores, fig.width=8, fig.height=4}
+# Summary stats
 score_sum <- pca_coords %>%
   group_by(!!sym(group_col), !!sym(time_col)) %>%
   summarise(
@@ -269,7 +269,7 @@ score_sum <- pca_coords %>%
     .groups = "drop"
   )
 
-# 1. barplot
+# 1. Barplot
 p_bar <- ggplot(score_sum, aes(x = !!sym(time_col), y = mean, fill = !!sym(group_col))) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.8) +
   geom_errorbar(aes(ymin = mean - se, ymax = mean + se), 
@@ -279,25 +279,25 @@ p_bar <- ggplot(score_sum, aes(x = !!sym(time_col), y = mean, fill = !!sym(group
              position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), 
              color = "black", size = 1.5, alpha = 0.6, show.legend = FALSE) +
   theme_bw() +
-  labs(y = "norm score", title = "maturation score", fill = "genotype")
+  labs(y = "Norm Score", title = "Maturation Score", fill = "Genotype")
 
-# 2. lineplot
+# 2. Lineplot
 p_line <- ggplot(score_sum, aes(x = !!sym(time_col), y = mean, group = !!sym(group_col), color = !!sym(group_col))) +
   geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.1, size = 0.5) +
   geom_line(size = 1) +
   geom_point(size = 3) +
   theme_bw() +
-  labs(y = "norm score", title = "trajectory", color = "genotype")
+  labs(y = "Norm Score", title = "Trajectory", color = "Genotype")
 
 grid.arrange(p_bar, p_line, ncol = 2)
 ```
 
-# 8. save
+# 8. Save
 
-saving stuff.
+Saving stuff.
 
 ```{r save}
-ggsave("plots/maturation_scores_barplot.png", p_bar, width = 6, height = 5, dpi = 300)
-ggsave("plots/maturation_scores_lineplot.png", p_line, width = 6, height = 5, dpi = 300)
+ggsave("plots/maturation_scores_barplot.png", p_bar, width = 5, height = 4, dpi = 300)
+ggsave("plots/maturation_scores_lineplot.png", p_line, width = 5, height = 4, dpi = 300)
 write.csv(pca_coords, "results/maturation_scores.csv")
 ```
