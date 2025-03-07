@@ -34,7 +34,7 @@ library(scatterplot3d)
 
 # 2. Load Data
 
-Grabbing metadata and counts. Using raw counts for LRT and VST for PCA/plotting.
+taking metadata and counts + Using raw counts for LRT and VST for PCA/plotting.
 
 ```{r load_data}
 # Paths
@@ -42,12 +42,12 @@ meta_file <- "dat/metadata/WC24_metadata_clean.rds"
 raw_file <- "dat/counts/raw/WC24_filt_raw_counts.rds"
 vst_file <- "dat/counts/vst/WC24_vst_counts.rds"
 
-# Load em up
+# Load up data
 metadata <- readRDS(meta_file)
 raw_counts <- readRDS(raw_file)
 vst_counts <- readRDS(vst_file)
 
-# Quick check
+# quick chck
 print("Meta dims:")
 dim(metadata)
 head(metadata)
@@ -55,7 +55,7 @@ head(metadata)
 
 # 3. Preprocessing
 
-Making sure samples match up and factors are set right.
+Making sure samples match up and factors are set properly
 
 ```{r preprocess}
 # Align samples if needed
@@ -82,7 +82,7 @@ control_group <- "D21"
 
 # 4. Feature Selection (LRT)
 
-Finding dynamic genes in the control group using LRT.
+finding temporally dynamic genes in the control group using LRT
 
 ```{r lrt}
 # Subset D21 controls
@@ -118,7 +118,7 @@ if (length(sig_genes) < n_top) {
 
 # 5. PCA & Vector Def
 
-PCA on the top genes, then defining the Start (Day 6) and End (Day 17) centroids.
+PCA on the top genes, then defining the start (day 6) and end (day 17) centroids
 
 ```{r pca_calc}
 # Subset VST
@@ -164,7 +164,7 @@ message(paste("Vector defined: Day", t_start, "-> Day", t_end))
 
 # 6. Calc Scores
 
-Projecting everyone onto the vector. 0 = Start, 1 = End.
+projecting all samples onto the differentiation vector: 0 = start and 1 = end
 
 ```{r score_calc}
 # Projection function
@@ -200,7 +200,7 @@ pca_coords %>%
 
 ## A. 3D PCA
 
-Showing the trajectory.
+plotting the control trajectory
 
 ```{r plot_pca, fig.width=6, fig.height=5}
 # Var explained
@@ -212,47 +212,53 @@ pc3_lab <- paste0("PC3: ", round(var_exp[3], 1), "%")
 # Filter for control only
 pca_coords_ctrl <- pca_coords %>% filter(!!sym(group_col) == control_group)
 
-# Save plot (Smaller dimensions)
-png("plots/pca_trajectory_plot.png", width = 6, height = 5, units = "in", res = 300)
-
 # Colors (no black for Day 6)
 cols <- c("#1B9E77", "#D95F02", "#7570B3")
 cols_mapped <- cols[as.numeric(pca_coords_ctrl[[time_col]])]
 
-# Scatterplot3d with manual margin adjustments
-s3d <- scatterplot3d(x = pca_coords_ctrl$PC1, 
-                     y = pca_coords_ctrl$PC2, 
-                     z = pca_coords_ctrl$PC3,
-                     color = cols_mapped,
-                     pch = 19, 
-                     type = "h", 
-                     main = paste("3D PCA (", control_group, ")"),
-                     xlab = pc1_lab,
-                     ylab = pc2_lab,
-                     zlab = pc3_lab,
-                     angle = 45,
-                     scale.y = 0.7,
-                     y.margin.add = 0.2,
-                     mar = c(5, 5, 4, 7))
+# define plotting function to avoid duplication
+plot_pca_3d <- function() {
+  # Scatterplot3d with manual margin adjustments
+  s3d <- scatterplot3d(x = pca_coords_ctrl$PC1, 
+                       y = pca_coords_ctrl$PC2, 
+                       z = pca_coords_ctrl$PC3,
+                       color = cols_mapped,
+                       pch = 19, 
+                       type = "h", 
+                       main = paste("3D PCA (", control_group, ")"),
+                       xlab = pc1_lab,
+                       ylab = pc2_lab,
+                       zlab = pc3_lab,
+                       angle = 45,
+                       scale.y = 0.7,
+                       y.margin.add = 0.2,
+                       mar = c(5, 5, 4, 7))
+  
+  # Arrow
+  s3d_coords <- s3d$xyz.convert(x = c(origin_vec[1], endpoint_vec[1]), 
+                                y = c(origin_vec[2], endpoint_vec[2]), 
+                                z = c(origin_vec[3], endpoint_vec[3]))
+  
+  arrows(x0 = s3d_coords$x[1], y0 = s3d_coords$y[1], 
+         x1 = s3d_coords$x[2], y1 = s3d_coords$y[2], 
+         lwd = 3, col = "black", length = 0.1)
+  
+  text(s3d_coords$x[1], s3d_coords$y[1], labels = "Start", pos = 1, cex = 1.2)
+  text(s3d_coords$x[2], s3d_coords$y[2], labels = "End", pos = 3, cex = 1.2)
+  
+  # Legend outside
+  par(xpd = TRUE)
+  legend("topright", inset = c(-0.15, 0), legend = levels(pca_coords_ctrl[[time_col]]),
+         col = cols, pch = 19, title = "Timepoint", bty = "n", cex = 1.0)
+}
 
-# Arrow
-s3d_coords <- s3d$xyz.convert(x = c(origin_vec[1], endpoint_vec[1]), 
-                              y = c(origin_vec[2], endpoint_vec[2]), 
-                              z = c(origin_vec[3], endpoint_vec[3]))
-
-arrows(x0 = s3d_coords$x[1], y0 = s3d_coords$y[1], 
-       x1 = s3d_coords$x[2], y1 = s3d_coords$y[2], 
-       lwd = 3, col = "black", length = 0.1)
-
-text(s3d_coords$x[1], s3d_coords$y[1], labels = "Start", pos = 1, cex = 1.2)
-text(s3d_coords$x[2], s3d_coords$y[2], labels = "End", pos = 3, cex = 1.2)
-
-# Legend outside
-par(xpd = TRUE)
-legend("topright", inset = c(-0.15, 0), legend = levels(pca_coords_ctrl[[time_col]]),
-       col = cols, pch = 19, title = "Timepoint", bty = "n", cex = 1.0)
-
+# Save plot (Smaller dimensions)
+png("plots/pca_trajectory_plot.png", width = 6, height = 5, units = "in", res = 300)
+plot_pca_3d()
 dev.off()
+
+# show plot in rmd
+plot_pca_3d()
 ```
 
 ## B. Scores
@@ -260,7 +266,7 @@ dev.off()
 Barplot and Lineplot.
 
 ```{r plot_scores, fig.width=8, fig.height=4}
-# Summary stats
+# summary stats
 score_sum <- pca_coords %>%
   group_by(!!sym(group_col), !!sym(time_col)) %>%
   summarise(
@@ -269,7 +275,7 @@ score_sum <- pca_coords %>%
     .groups = "drop"
   )
 
-# 1. Barplot
+# 1. Bbarplot
 p_bar <- ggplot(score_sum, aes(x = !!sym(time_col), y = mean, fill = !!sym(group_col))) +
   geom_col(position = position_dodge(width = 0.8), width = 0.7, alpha = 0.8) +
   geom_errorbar(aes(ymin = mean - se, ymax = mean + se), 
@@ -281,7 +287,7 @@ p_bar <- ggplot(score_sum, aes(x = !!sym(time_col), y = mean, fill = !!sym(group
   theme_bw() +
   labs(y = "Norm Score", title = "Maturation Score", fill = "Genotype")
 
-# 2. Lineplot
+# 2. lineplot
 p_line <- ggplot(score_sum, aes(x = !!sym(time_col), y = mean, group = !!sym(group_col), color = !!sym(group_col))) +
   geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.1, size = 0.5) +
   geom_line(size = 1) +
@@ -294,10 +300,12 @@ grid.arrange(p_bar, p_line, ncol = 2)
 
 # 8. Save
 
-Saving stuff.
+Saving files
 
 ```{r save}
 ggsave("plots/maturation_scores_barplot.png", p_bar, width = 5, height = 4, dpi = 300)
 ggsave("plots/maturation_scores_lineplot.png", p_line, width = 5, height = 4, dpi = 300)
 write.csv(pca_coords, "results/maturation_scores.csv")
+
 ```
+
